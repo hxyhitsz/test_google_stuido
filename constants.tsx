@@ -1,171 +1,104 @@
 
-import { CategoryType, Question } from './types';
+import { Question } from './types';
 
 export const INTERVIEW_CONTENT: Question[] = [
+  // --- 一、大模型核心注意力 / 编码模块 ---
   {
-    id: "transformer-encoder-decoder",
-    category: CategoryType.TRANSFORMER,
-    title: "Encoder vs Decoder Blocks",
-    description: "Fundamental architectural differences between understanding (BERT) and generating (GPT).",
+    id: "gqa-mqa-mha",
+    category: "Attention & Encoding",
+    title: "MHA / GQA / MQA Implementation",
+    description: "KV Cache 显存优化技术演进：从多头到分组头再到单头。",
     content: [
-      {
-        type: 'markdown',
-        content: `### 核心设计差异
-1. **Encoder (双向)**: 允许当前 Token 看到前后的所有信息。常用于特征提取、分类。
-2. **Decoder (自回归)**: 使用 **Causal Mask**，确保计算第 $i$ 个 Token 时只能看到 $1$ 到 $i-1$。
-3. **Cross-Attention**: 在 Seq2Seq 结构中，Decoder 通过此模块“查阅” Encoder 的输出。`
-      },
-      {
-        type: 'code',
-        content: `import torch.nn as nn
-
-class TransformerBlock(nn.Module):
-    def __init__(self, dim, heads, is_decoder=False):
-        super().__init__()
-        self.is_decoder = is_decoder
-        self.attn = nn.MultiheadAttention(dim, heads, batch_first=True)
-        self.ln1 = nn.LayerNorm(dim)
-        self.ffn = nn.Sequential(
-            nn.Linear(dim, 4 * dim), nn.GELU(), nn.Linear(4 * dim, dim)
-        )
-        self.ln2 = nn.LayerNorm(dim)
-
-    def forward(self, x, cross_kv=None):
-        # Self-Attention
-        # is_decoder=True 时需传入 attn_mask (通常为下三角矩阵)
-        mask = self.get_causal_mask(x.size(1)) if self.is_decoder else None
-        out, _ = self.attn(x, x, x, attn_mask=mask)
-        x = self.ln1(x + out)
-
-        # Cross-Attention (如有)
-        if cross_kv is not None:
-            out, _ = self.attn(x, cross_kv, cross_kv)
-            x = self.ln1(x + out)
-
-        # FFN
-        x = self.ln2(x + self.ffn(x))
-        return x`
-      }
+      { type: 'markdown', content: "### 核心对比\n- **MHA**: $H_q = H_k = H_v$，每个 Query 都有自己的 KV。\n- **GQA**: $H_q = n \times H_k$，每组 Query 共享一对 KV（Llama-3 标配）。\n- **MQA**: $H_k = H_v = 1$，所有 Query 共享一对 KV。" },
+      { type: 'code', content: "def grouped_query_attention(q, k, v, num_groups):\n    # q: [B, H_q, L, D], k/v: [B, H_kv, L, D]\n    # H_q 必须能被 H_kv 整除，num_groups = H_q // H_kv\n    B, H_q, L, D = q.shape\n    H_kv = k.shape[1]\n    \n    # 1. 扩展 k, v 匹配 q 的头数\n    # repeat_interleave 会将 [B, 1, L, D] 变为 [B, G, L, D]\n    k = k.repeat_interleave(H_q // H_kv, dim=1)\n    v = v.repeat_interleave(H_q // H_kv, dim=1)\n    \n    # 2. 标准 Scaled Dot-Product Attention\n    scores = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(D)\n    attn = torch.softmax(scores, dim=-1)\n    return torch.matmul(attn, v)" }
     ]
   },
   {
-    id: "ppo-algorithm",
-    category: CategoryType.RL_ALGO,
-    title: "PPO: Proximal Policy Optimization",
-    description: "The gold standard for RLHF alignment using clipping for stability.",
+    id: "rope-embedding",
+    category: "Attention & Encoding",
+    title: "RoPE (Rotary Positional Embedding)",
+    description: "旋转位置编码：通过复数空间旋转实现相对位置敏感。",
     content: [
-      {
-        type: 'markdown',
-        content: `### PPO 损失函数逻辑
-PPO 通过 **Clipping** 限制策略更新幅度。它计算 $r_t(\theta) = \frac{\pi_\theta}{\pi_{old}}$，并取：
-$L = \min(r_t A_t, \text{clip}(r_t, 1-\epsilon, 1+\epsilon) A_t)$`
-      },
-      {
-        type: 'code',
-        content: `def ppo_update(old_logps, new_logps, advantages, eps=0.2):
-    # ratio = exp(log(new) - log(old))
-    ratio = (new_logps - old_logps).exp()
-    
-    # 未剪裁目标
-    surr1 = ratio * advantages
-    # 剪裁后的目标 (限制更新在 [1-eps, 1+eps])
-    surr2 = torch.clamp(ratio, 1.0 - eps, 1.0 + eps) * advantages
-    
-    # 取两者最小值以实现保守更新
-    loss = -torch.min(surr1, surr2).mean()
-    return loss`
-      }
+      { type: 'markdown', content: "### 为什么用 RoPE?\n1. **相对位置敏感**: 两个 Token 的内积只取决于它们的相对距离。\n2. **外推性**: 理论上支持比训练长度更长的序列（配合插值）。" },
+      { type: 'code', content: "def apply_rope(q, k, cos, sin):\n    # q, k: [B, L, H, D]\n    # cos, sin: [L, D/2]\n    def rotate_half(x):\n        # 将最后维度 D 拆分，前一半和后一半交换并取负\n        x1, x2 = x[..., :x.shape[-1]//2], x[..., x.shape[-1]//2:]\n        return torch.cat((-x2, x1), dim=-1)\n\n    # 核心公式: x * cos + rotate_half(x) * sin\n    q_embed = (q * cos) + (rotate_half(q) * sin)\n    k_embed = (k * cos) + (rotate_half(k) * sin)\n    return q_embed, k_embed" }
     ]
   },
-  {
-    id: "grpo-deepseek",
-    category: CategoryType.RL_ALGO,
-    title: "GRPO (DeepSeek-R1)",
-    description: "Group Relative Policy Optimization - Scaling RL without a Critic network.",
-    content: [
-      {
-        type: 'markdown',
-        content: `### GRPO (Group Relative)
-DeepSeek-R1 的核心创新。不需要额外的 Critic 网络，而是对一个 Prompt 生成 $G$ 个回复，通过组内回复的相对 Reward 计算 Advantage。`
-      },
-      {
-        type: 'code',
-        content: `def compute_grpo_advantage(rewards):
-    # rewards shape: [GroupSize]
-    # 对同一 Prompt 的一组采样计算均值和标准差
-    mean = rewards.mean()
-    std = rewards.std() + 1e-8
-    
-    # 相对优势 = (当前奖励 - 组内平均) / 标准差
-    advantages = (rewards - mean) / std
-    return advantages
 
-# 优点：显著降低显存占用，支持超大规模 RL 训练`
-      }
+  // --- 二、深度学习基础：优化器 / 损失函数 ---
+  {
+    id: "adamw-optimizer",
+    category: "DL foundations",
+    title: "AdamW: Decoupled Weight Decay",
+    description: "解耦权重衰减：修正了 Adam 在 L2 正则化时的权重更新逻辑。",
+    content: [
+      { type: 'markdown', content: "### Adam vs AdamW\nAdam 在计算梯度时加入 L2 项，导致惩罚项被梯度自适应调整。**AdamW** 直接在权重更新步减去 $\lambda \theta$，解耦了衰减与梯度比例。" },
+      { type: 'code', content: "def adamw_step(w, grad, m, v, lr, wd, beta1=0.9, beta2=0.999, eps=1e-8):\n    # 1. 解耦权重衰减 (Decoupled Weight Decay)\n    w = w - lr * wd * w\n    \n    # 2. 更新一阶/二阶动量\n    m = beta1 * m + (1 - beta1) * grad\n    v = beta2 * v + (1 - beta2) * (grad ** 2)\n    \n    # 3. 偏差修正\n    m_hat = m / (1 - beta1)\n    v_hat = v / (1 - beta2)\n    \n    # 4. 参数更新\n    return w - lr * m_hat / (torch.sqrt(v_hat) + eps)" }
     ]
   },
   {
-    id: "qlora-implementation",
-    category: CategoryType.LLM_ENG,
-    title: "QLoRA: 4-bit Quantized LoRA",
-    description: "Enabling fine-tuning of 70B models on a single 48GB GPU.",
+    id: "focal-loss",
+    category: "DL foundations",
+    title: "Focal Loss for Imbalance",
+    description: "解决样本不平衡：让模型更关注难分类的样本。",
     content: [
-      {
-        type: 'markdown',
-        content: `### QLoRA 三大支柱
-1. **NF4 (NormalFloat 4)**: 针对正态分布权重的最优量化数据类型。
-2. **Double Quantization**: 对量化常数再量化，节省约 0.37 bits/param。
-3. **Paged Optimizers**: 利用 CPU 内存管理显存尖峰。`
-      },
-      {
-        type: 'code',
-        content: `class QLoRALayer(nn.Module):
-    def __init__(self, in_f, out_f, r=8):
-        super().__init__()
-        # 假设 base_weight 已量化为 NF4
-        self.register_buffer('base_weight', torch.randn(out_f, in_f, dtype=torch.uint8))
-        self.register_buffer('scales', torch.randn(out_f, 1))
-        
-        # LoRA 适配器 (保持高精度 FP32/BF16)
-        self.lora_A = nn.Parameter(torch.zeros(in_f, r))
-        self.lora_B = nn.Parameter(torch.zeros(r, out_f))
-        
-    def forward(self, x):
-        # 1. 在 CUDA 核内进行反量化计算 (W * x)
-        # 2. 计算 LoRA 增量 (x * A * B)
-        lora_out = (x @ self.lora_A @ self.lora_B)
-        # 3. 相加
-        return self.dequantize_compute(x) + lora_out`
-      }
+      { type: 'markdown', content: "### 公式核心\n$FL(p_t) = -(1-p_t)^\gamma \log(p_t)$\n- 当 $p_t$ 接近 1 (易分样本)，权重因子 $(1-p_t)^\gamma$ 趋近 0，降低损失贡献。" },
+      { type: 'code', content: "def focal_loss(preds, targets, alpha=0.25, gamma=2.0):\n    # preds: sigmoid 后的概率\n    # targets: 0 或 1\n    ce_loss = F.binary_cross_entropy(preds, targets, reduction='none')\n    p_t = preds * targets + (1 - preds) * (1 - targets)\n    \n    # 难易样本加权: (1 - p_t)^gamma\n    loss = alpha * ((1 - p_t) ** gamma) * ce_loss\n    return loss.mean()" }
+    ]
+  },
+
+  // --- 三、计算机视觉核心 ---
+  {
+    id: "ciou-implementation",
+    category: "Computer Vision",
+    title: "CIoU (Complete IoU)",
+    description: "最全的框回归损失：考虑了重叠面积、中心点距离和长宽比。",
+    content: [
+      { type: 'markdown', content: "### CIoU 三要素\n1. **IoU**: 重叠区域。\n2. **Distance**: 中心点欧式距离比外接框对角线。\n3. **Aspect Ratio**: 形状相似度惩罚 $\nu$。" },
+      { type: 'code', content: "def compute_ciou(box1, box2):\n    # box: [x1, y1, x2, y2]\n    inter, union, iou = get_iou(box1, box2)\n    \n    # 1. 中心距离惩罚项\n    d2 = dist(center(box1), center(box2))**2\n    c2 = diag(outer_box(box1, box2))**2\n    distance_term = d2 / c2\n    \n    # 2. 长宽比惩罚项\n    v = (4 / pi**2) * (atan(w1/h1) - atan(w2/h2))**2\n    alpha = v / ((1 - iou) + v + 1e-6)\n    \n    return iou - (distance_term + alpha * v)" }
     ]
   },
   {
-    id: "mha-gqa-mqa",
-    category: CategoryType.ATTENTION,
-    title: "MHA / GQA / MQA",
-    description: "Comparing attention heads mechanisms for efficiency.",
+    id: "soft-nms",
+    category: "Computer Vision",
+    title: "Soft NMS",
+    description: "非极大值抑制改进：对重叠框不直接删除，而是降低其置信度。",
     content: [
-      {
-        type: 'markdown',
-        content: `### KV Cache 优化
-1. **MHA**: 每个 Q 有独立的 K, V。
-2. **MQA**: 所有 Q 共享一对 K, V (节省显存极多，但质量略降)。
-3. **GQA**: 每组 Q 共享一对 K, V (折中方案，LLaMA-3 标配)。`
-      },
-      {
-        type: 'code',
-        content: `def gqa_logic(q, k, v, num_groups):
-    # q: [B, L, n_q, d]
-    # k, v: [B, L, n_kv, d]
-    group_size = q.size(2) // k.size(2)
-    
-    # 扩展 k, v 以匹配 q 的头数
-    k = k.repeat_interleave(group_size, dim=2)
-    v = v.repeat_interleave(group_size, dim=2)
-    
-    # 之后进行标准 MHA 计算
-    return compute_attention(q, k, v)`
-      }
+      { type: 'markdown', content: "### 核心价值\n在密集场景下，防止将真实的遮挡目标由于 IoU 过大而误删。" },
+      { type: 'code', content: "def soft_nms(boxes, scores, iou_thresh=0.5, sigma=0.5):\n    # boxes: [N, 4], scores: [N]\n    indices = scores.sort(descending=True).indices\n    for i in range(len(indices)):\n        idx = indices[i]\n        for j in range(i + 1, len(indices)):\n            jdx = indices[j]\n            iou = compute_iou(boxes[idx], boxes[jdx])\n            # 高斯加权衰减: score = score * exp(-iou^2 / sigma)\n            if iou > iou_thresh:\n                scores[jdx] *= math.exp(-(iou**2) / sigma)\n    return boxes[scores > 0.01]" }
+    ]
+  },
+
+  // --- 四、强化学习算法 ---
+  {
+    id: "dpo-loss",
+    category: "RL & Alignment",
+    title: "DPO (Direct Preference Optimization)",
+    description: "直接偏好优化：绕过奖励模型，直接在偏好数据上微调策略。",
+    content: [
+      { type: 'markdown', content: "### DPO 核心思想\n利用 Bradley-Terry 模型，将 RLHF 的 KL 散度约束下的奖励最大化问题转化为一个简单的二分类交叉熵损失。" },
+      { type: 'code', content: "def dpo_loss(policy_logps, ref_logps, beta=0.1):\n    # policy_logps: [chosen, rejected] 当前模型的 log 概率\n    # ref_logps: [chosen, rejected] 参考模型的 log 概率\n    \n    # 计算当前模型与参考模型的 log 概率差 (Implicit Reward)\n    pi_logratios = policy_logps_chosen - policy_logps_rejected\n    ref_logratios = ref_logps_chosen - ref_logps_rejected\n    \n    logits = pi_logratios - ref_logratios\n    # 核心公式: -log(sigmoid(beta * (logits)))\n    return -F.logsigmoid(beta * logits).mean()" }
+    ]
+  },
+
+  // --- 六、大模型长文本 / 高效训练 ---
+  {
+    id: "lora-module",
+    category: "LLM Engineering",
+    title: "LoRA (Low-Rank Adaptation)",
+    description: "低秩适配：保持原权重冻结，通过旁路矩阵 A 和 B 进行高效训练。",
+    content: [
+      { type: 'markdown', content: "### 参数计算\n训练参数量为 $2 \times r \times d$，其中 $r \ll d$。推理时可将 $W + AB$ 合并，实现零额外延迟。" },
+      { type: 'code', content: "class LoRALinear(nn.Module):\n    def __init__(self, in_dim, out_dim, r=8, lora_alpha=16):\n        self.base_layer = nn.Linear(in_dim, out_dim) # 冻结\n        self.lora_A = nn.Parameter(torch.randn(in_dim, r)) # 降维\n        self.lora_B = nn.Parameter(torch.zeros(r, out_dim)) # 升维，初始化为 0\n        self.scaling = lora_alpha / r\n\n    def forward(self, x):\n        # 结果 = 基础输出 + (x @ A @ B) * 缩放因子\n        return self.base_layer(x) + (x @ self.lora_A @ self.lora_B) * self.scaling" }
+    ]
+  },
+  {
+    id: "top-p-sampling",
+    category: "LLM Engineering",
+    title: "Top-P (Nucleus) Sampling",
+    description: "核采样：选择累积概率达到阈值 P 的最小 Token 集合。",
+    content: [
+      { type: 'markdown', content: "### 相比 Top-K 的优势\nTop-K 截断点固定，而 Top-P 的截断窗口随概率分布的平坦程度动态变化，生成更灵活。" },
+      { type: 'code', content: "def top_p_sampling(logits, p=0.9):\n    sorted_logits, indices = torch.sort(logits, descending=True)\n    probs = torch.softmax(sorted_logits, dim=-1)\n    \n    # 计算累积概率\n    cum_probs = torch.cumsum(probs, dim=-1)\n    \n    # 移除累积概率超过 p 的 token (保留第一个超过 p 的)\n    mask = cum_probs > p\n    mask[..., 1:] = mask[..., :-1].clone()\n    mask[..., 0] = 0\n    \n    sorted_logits[mask] = -float('Inf')\n    return torch.softmax(sorted_logits, dim=-1)" }
     ]
   }
 ];

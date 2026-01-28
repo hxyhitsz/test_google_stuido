@@ -1,21 +1,38 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Interview Pro | Static Cheat Sheet</title>
+    <title>AI Interview Pro | 高级算法面试秘籍</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Babel for on-the-fly TSX compilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .code-font { font-family: 'Fira Code', monospace; }
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+        body { 
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            overflow: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace !important; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+        
+        pre code {
+            font-family: 'JetBrains Mono', monospace !important;
+            counter-reset: line;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .content-fade {
+            animation: fadeIn 0.6s ease-out forwards;
+        }
     </style>
     <script type="importmap">
 {
@@ -23,15 +40,16 @@
     "react": "https://esm.sh/react@19.0.0",
     "react-dom": "https://esm.sh/react-dom@19.0.0",
     "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "react/": "https://esm.sh/react@^19.2.4/"
   }
 }
 </script>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body class="bg-white text-gray-900 selection:bg-indigo-100 selection:text-indigo-900">
     <div id="root"></div>
-    <!-- Load main script as Babel/Module. Using relative path for GitHub Pages compatibility. -->
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
+    <!-- 关键：我们将 constants.tsx 逻辑也放进 index.js 以便静态运行 -->
+    <script type="text/babel" data-type="module" src="./index.js"></script>
 </body>
 </html>

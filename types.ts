@@ -1,22 +1,15 @@
+// Define types for the Interview application to ensure type safety and resolve module errors
+export type CategoryType = string;
 
-export enum CategoryType {
-  ATTENTION = "Attention & Encoding",
-  TRANSFORMER = "Transformer Arch",
-  RL_ALGO = "RL & Alignment",
-  LLM_ENG = "LLM Engineering",
-  DL_BASICS = "DL Basics",
-  CV_CORE = "CV Core"
-}
-
-export interface ContentSection {
+export interface ContentBlock {
   type: 'markdown' | 'code';
   content: string;
 }
 
 export interface Question {
   id: string;
-  title: string;
   category: CategoryType;
+  title: string;
   description: string;
-  content: ContentSection[];
+  content: ContentBlock[];
 }
