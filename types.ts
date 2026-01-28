@@ -1,19 +1,16 @@
 
 export enum CategoryType {
   ATTENTION = "Attention & Encoding",
-  DL_BASICS = "DL Basics",
-  CV_CORE = "CV Core",
-  RL_ALGO = "RL & Alignment",
   TRANSFORMER = "Transformer Arch",
-  LLM_ENG = "LLM Engineering"
+  RL_ALGO = "RL & Alignment",
+  LLM_ENG = "LLM Engineering",
+  DL_BASICS = "DL Basics",
+  CV_CORE = "CV Core"
 }
 
-export interface CodeSnippet {
-  title: string;
-  description: string;
-  code: string;
-  category: CategoryType;
-  tags: string[];
+export interface ContentSection {
+  type: 'markdown' | 'code';
+  content: string;
 }
 
 export interface Question {
@@ -21,8 +18,5 @@ export interface Question {
   title: string;
   category: CategoryType;
   description: string;
-  content: {
-    type: 'markdown' | 'code';
-    content: string;
-  }[];
+  content: ContentSection[];
 }
